@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="ja" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FuelLog - 燃費 & 車両履歴管理</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome (Icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        dark: {
+                            bg: '#0F172A',
+                            card: '#1E293B',
+                            border: '#334155',
+                            accent: '#3B82F6',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 2px;
+        }
+        /* 入力フォーカス効果 */
+        .input-focus {
+            transition: all 0.2s ease;
+        }
+        .input-focus:focus-within {
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+        /* スクロールバー非表示（タブ用） */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans h-full w-full overflow-hidden flex flex-col justify-between selection:bg-blue-500 selection:text-white">
+
+    <!-- App Header & Navigation -->
+    <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 px-3 py-2 flex-none">
+        <div class="flex justify-between items-center mb-1.5">
+            <h1 class="text-lg font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent flex items-center gap-2">
+                <i class="fa-solid fa-gas-pump text-blue-400"></i> FuelLog
+            </h1>
+            <div class="flex items-center gap-1.5">
+                <button onclick="openHistoryModal()" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 flex items-center gap-1 transition">
+                    <i class="fa-solid fa-list-ul"></i> 履歴
+                </button>
+                <button onclick="openSettingsModal()" class="px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition" title="設定・データ管理">
+                    <i class="fa-solid fa-sliders"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 車両タブ -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar" id="vehicle-tabs">
+            <!-- Dynamic JavaScript Content -->
+        </div>
+    </header>
+
+    <!-- Main Content Area (Fixed layout, fit screen) -->
+    <main class="flex-1 p-3 flex flex-col justify-between overflow-hidden gap-2.5 max-w-lg mx-auto w-full">
+        
+        <!-- ダッシュボードカード（ステータス表示） -->
+        <section class="grid grid-cols-2 gap-2 flex-none">
+            <!-- 平均燃費 -->
+            <div class="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-800 rounded-2xl p-3 flex flex-col justify-between relative overflow-hidden shadow-lg">
+                <div class="absolute -right-2 -bottom-2 text-blue-500/10 text-6xl pointer-events-none">
+                    <i class="fa-solid fa-gauge-high"></i>
+                </div>
+                <div class="text-xs text-slate-400 font-medium">通算平均燃費</div>
+                <div class="my-1 flex items-baseline gap-1">
+                    <span id="stat-avg-consumption" class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-300">--</span>
+                    <span class="text-xs text-slate-400 font-bold">km/L</span>
+                </div>
+                <div class="text-[10px] text-slate-500 truncate" id="stat-last-consumption">前回: -- km/L</div>
+            </div>
+
+            <!-- ガソリン平均単価 & 最新走行距離 -->
+            <div class="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-800 rounded-2xl p-3 flex flex-col justify-between relative overflow-hidden shadow-lg">
+                <div class="absolute -right-2 -bottom-2 text-emerald-500/10 text-6xl pointer-events-none">
+                    <i class="fa-solid fa-coins"></i>
+                </div>
+                <div class="text-xs text-slate-400 font-medium">平均単価 / 総距離</div>
+                <div class="my-1 flex items-baseline gap-1">
+                    <span id="stat-avg-price" class="text-xl font-bold text-slate-100">--</span>
+                    <span class="text-xs text-slate-400">円/L</span>
+                </div>
+                <div class="text-[10px] text-slate-400 flex justify-between" id="stat-total-odo">
+                    <span>総Odo:</span>
+                    <span class="font-semibold text-slate-300">-- km</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 給油データ入力フォーム -->
+        <section class="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl flex-1 flex flex-col justify-between min-h-0">
+            <h2 class="text-xs font-semibold text-slate-400 tracking-wider uppercase flex items-center gap-1.5 flex-none">
+                <i class="fa-solid fa-pen-to-square text-blue-400"></i> 給油データの記録
+            </h2>
+
+            <form id="fuel-form" class="flex-1 flex flex-col justify-between py-1 gap-1.5" onsubmit="handleFormSubmit(event)">
+                <!-- 日付 & 油種 -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[10px] text-slate-400 mb-0.5">日付</label>
+                        <input type="date" id="input-date" required
+                            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-slate-400 mb-0.5">油種</label>
+                        <select id="input-fuel-type"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+                            <option value="レギュラー">レギュラー</option>
+                            <option value="ハイオク">ハイオク</option>
+                            <option value="ディーゼル">ディーゼル</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- オドメーター -->
+                <div>
+                    <div class="flex justify-between items-center mb-0.5">
+                        <label class="text-[10px] text-slate-400">オドメーター (走行距離)</label>
+                        <span id="odo-diff-hint" class="text-[10px] text-blue-400"></span>
+                    </div>
+                    <div class="relative flex items-center">
+                        <input type="number" id="input-odo" step="0.1" placeholder="例: 45200" required
+                            oninput="calculateUnitCalculations()"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-2.5 pr-8 py-1 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono">
+                        <span class="absolute right-2.5 text-[10px] text-slate-500">km</span>
+                    </div>
+                </div>
+
+                <!-- 給油量 & 金額 -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[10px] text-slate-400 mb-0.5">給油量</label>
+                        <div class="relative flex items-center">
+                            <input type="number" id="input-amount" step="0.01" placeholder="35.5" required
+                                oninput="calculateUnitCalculations()"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-2.5 pr-6 py-1 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono">
+                            <span class="absolute right-2.5 text-[10px] text-slate-500">L</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-slate-400 mb-0.5">支払金額</label>
+                        <div class="relative flex items-center">
+                            <input type="number" id="input-price" step="1" placeholder="5800" required
+                                oninput="calculateUnitCalculations()"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-2.5 pr-6 py-1 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono">
+                            <span class="absolute right-2.5 text-[10px] text-slate-500">円</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- リアルタイム単価表示 -->
+                <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl px-2.5 py-1 flex justify-between items-center text-xs">
+                    <span class="text-slate-400 text-[10px]">計算単価:</span>
+                    <div class="font-mono">
+                        <span id="calculated-unit-price" class="text-emerald-400 font-bold">0</span>
+                        <span class="text-[9px] text-slate-500">円/L</span>
+                    </div>
+                </div>
+
+                <!-- 送信ボタン -->
+                <button type="submit"
+                    class="w-full bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-semibold py-2 rounded-xl shadow-md shadow-blue-900/30 active:scale-[0.99] transition text-xs flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-plus"></i> 給油記録を追加
+                </button>
+            </form>
+        </section>
+
+        <!-- 車両履歴（メンテ・車検・タイヤ交換等） -->
+        <section class="bg-slate-900/80 border border-slate-800/80 rounded-xl p-2.5 flex-none shadow-lg">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-wrench text-amber-400"></i> 車両履歴 (タイヤ・車検等)
+                </span>
+                <div class="flex items-center gap-2">
+                    <button onclick="openAddMaintModal()" class="text-[10px] bg-amber-950/60 border border-amber-800/60 text-amber-300 px-2 py-0.5 rounded-md hover:bg-amber-900/60 transition flex items-center gap-1">
+                        <i class="fa-solid fa-plus text-[9px]"></i> 記録追加
+                    </button>
+                    <button onclick="openMaintHistoryModal()" class="text-[10px] text-slate-400 hover:text-slate-200 hover:underline">
+                        一覧
+                    </button>
+                </div>
+            </div>
+            <div id="latest-maint-card" class="text-xs text-slate-400">
+                <span class="text-slate-500 text-[11px]">車両履歴の記録はありません</span>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal: 給油記録リスト -->
+    <div id="history-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex justify-center items-end sm:items-center p-0 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-lg h-[80vh] sm:rounded-2xl rounded-t-2xl flex flex-col overflow-hidden shadow-2xl">
+            <div class="p-3.5 border-b border-slate-800 flex justify-between items-center">
+                <h3 class="font-bold text-slate-100 flex items-center gap-2 text-sm">
+                    <i class="fa-solid fa-clock-rotate-left text-blue-400"></i> <span id="history-vehicle-name">給油履歴</span>
+                </h3>
+                <button onclick="closeHistoryModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 space-y-2" id="history-list">
+                <!-- JavaScriptで挿入 -->
+            </div>
+            <div class="p-3 border-t border-slate-800 bg-slate-950/60 text-center">
+                <button onclick="closeHistoryModal()" class="px-5 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg">
+                    閉じる
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: 車両履歴追加 -->
+    <div id="add-maint-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex justify-center items-center p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+            <div class="p-3.5 border-b border-slate-800 flex justify-between items-center">
+                <h3 class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-wrench text-amber-400"></i> 車両履歴の記録
+                </h3>
+                <button onclick="closeAddMaintModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <form onsubmit="handleMaintFormSubmit(event)" class="p-4 space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">日付</label>
+                    <input type="date" id="maint-date" required
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-100 focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">種別</label>
+                    <select id="maint-category"
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-100 focus:outline-none focus:border-blue-500">
+                        <option value="タイヤ交換">🛞 タイヤ交換</option>
+                        <option value="車検">📋 車検</option>
+                        <option value="オイル交換">🛢️ オイル交換</option>
+                        <option value="整備・修理">🛠️ 整備・修理</option>
+                        <option value="その他">📌 その他</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-slate-400 mb-1">費用 (任意)</label>
+                        <input type="number" id="maint-cost" placeholder="例: 45000"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">走行距離 (任意)</label>
+                        <input type="number" id="maint-odo" step="0.1" placeholder="例: 45200"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">メモ / 内容</label>
+                    <input type="text" id="maint-memo" placeholder="例: 夏タイヤへ履き替え / オイルフィルター交換"
+                        class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-blue-500">
+                </div>
+                <button type="submit"
+                    class="w-full bg-amber-600 hover:bg-amber-500 text-white font-semibold py-2 rounded-xl transition mt-2">
+                    履歴を追加
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: 車両履歴一覧 -->
+    <div id="maint-history-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex justify-center items-end sm:items-center p-0 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-lg h-[80vh] sm:rounded-2xl rounded-t-2xl flex flex-col overflow-hidden shadow-2xl">
+            <div class="p-3.5 border-b border-slate-800 flex justify-between items-center">
+                <h3 class="font-bold text-slate-100 flex items-center gap-2 text-sm">
+                    <i class="fa-solid fa-wrench text-amber-400"></i> <span id="maint-vehicle-name">車両履歴一覧</span>
+                </h3>
+                <button onclick="closeMaintHistoryModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 space-y-2" id="maint-history-list">
+                <!-- JavaScriptで挿入 -->
+            </div>
+            <div class="p-3 border-t border-slate-800 bg-slate-950/60 text-center">
+                <button onclick="closeMaintHistoryModal()" class="px-5 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg">
+                    閉じる
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: 車両追加・設定 & CSV入出力 -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex justify-center items-center p-4">
+        <div class="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+            <div class="p-3.5 border-b border-slate-800 flex justify-between items-center">
+                <h3 class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-emerald-400"></i> 設定 & 車両管理
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-4 space-y-4">
+                <!-- 選択中の車両名変更 -->
+                <div>
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">選択中の車両名を変更</h4>
+                    <form onsubmit="handleRenameVehicle(event)" class="flex gap-2">
+                        <input type="text" id="rename-vehicle-input" placeholder="例: My CX-5" required
+                            class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1">
+                            <i class="fa-solid fa-pen"></i> 更新
+                        </button>
+                    </form>
+                </div>
+
+                <hr class="border-slate-800">
+
+                <!-- 新規車両の追加 -->
+                <div>
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">新しい車両の追加</h4>
+                    <form onsubmit="handleAddVehicle(event)" class="flex gap-2">
+                        <input type="text" id="new-vehicle-name" placeholder="例: プリウス / CX-5" required
+                            class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold">
+                            追加
+                        </button>
+                    </form>
+                </div>
+
+                <hr class="border-slate-800">
+
+                <!-- CSV 入出力 -->
+                <div>
+                    <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">データバックアップ (CSV)</h4>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="exportCSV()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-download text-blue-400"></i> CSVエクスポート
+                        </button>
+                        <label class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-upload text-emerald-400"></i> CSVインポート
+                            <input type="file" id="csv-file-input" accept=".csv" onchange="importCSV(event)" class="hidden">
+                        </label>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mt-1.5">※インポート時は「日付, 走行距離(km), 給油量(L), 支払金額(円), 油種」形式のCSVに対応します。</p>
+                </div>
+
+                <hr class="border-slate-800">
+
+                <!-- 危険な操作 -->
+                <div>
+                    <button onclick="deleteCurrentVehicle()" class="w-full bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 text-rose-300 py-2 rounded-xl text-xs transition">
+                        現在の車両「<span id="delete-vehicle-name"></span>」を削除
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 bg-slate-800 text-slate-100 border border-slate-700 px-4 py-2 rounded-full text-xs shadow-2xl transition-all duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-message">メッセージ</span>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // LocalStorage Key
+        const STORAGE_KEY = 'fuel_log_app_data_v1';
+
+        // Helper function to escape HTML string
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Default initial state
+        let appState = {
+            activeVehicleId: 'v1',
+            vehicles: [
+                {
+                    id: 'v1',
+                    name: 'マイカー 1',
+                    logs: [],
+                    maints: []
+                }
+            ]
+        };
+
+        // App Initialization
+        window.onload = function() {
+            loadData();
+            setDefaultDate();
+            renderTabs();
+            updateDashboard();
+        };
+
+        // Date Initializer
+        function setDefaultDate() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('input-date').value = today;
+            document.getElementById('maint-date').value = today;
+        }
+
+        // --- Data Persist ---
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+        }
+
+        function loadData() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                try {
+                    appState = JSON.parse(data);
+                    // Legacy migration for maints
+                    appState.vehicles.forEach(v => {
+                        if (!v.maints) v.maints = [];
+                    });
+                } catch (e) {
+                    console.error("Data load error:", e);
+                }
+            }
+        }
+
+        function getActiveVehicle() {
+            return appState.vehicles.find(v => v.id === appState.activeVehicleId) || appState.vehicles[0];
+        }
+
+        // --- UI Renders ---
+        function renderTabs() {
+            const tabsContainer = document.getElementById('vehicle-tabs');
+            tabsContainer.innerHTML = '';
+
+            appState.vehicles.forEach(v => {
+                const isActive = v.id === appState.activeVehicleId;
+                const btn = document.createElement('button');
+                btn.className = `px-3 py-1 rounded-xl text-xs font-semibold whitespace-nowrap transition border ${
+                    isActive 
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-900/40' 
+                        : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-slate-200'
+                }`;
+                btn.innerHTML = `<i class="fa-solid fa-car-side mr-1"></i>${escapeHtml(v.name)}`;
+                btn.onclick = () => switchVehicle(v.id);
+                tabsContainer.appendChild(btn);
+            });
+        }
+
+        function switchVehicle(id) {
+            appState.activeVehicleId = id;
+            saveData();
+            renderTabs();
+            updateDashboard();
+            calculateUnitCalculations();
+        }
+
+        // Update Dashboard Statistics
+        function updateDashboard() {
+            const vehicle = getActiveVehicle();
+            const logs = [...vehicle.logs].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const maints = [...(vehicle.maints || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // Stat calculations
+            let totalDist = 0;
+            let totalFuelForCalc = 0;
+            let totalPrice = 0;
+            let totalVolume = 0;
+            let lastConsumption = null;
+
+            if (logs.length >= 2) {
+                for (let i = 1; i < logs.length; i++) {
+                    const dist = logs[i].odo - logs[i - 1].odo;
+                    if (dist > 0) {
+                        totalDist += dist;
+                        totalFuelForCalc += logs[i].amount;
+                    }
+                }
+
+                // Last fuel consumption
+                const lastLogIndex = logs.length - 1;
+                const prevLog = logs[lastLogIndex - 1];
+                const currLog = logs[lastLogIndex];
+                const lastDist = currLog.odo - prevLog.odo;
+                if (lastDist > 0 && currLog.amount > 0) {
+                    lastConsumption = (lastDist / currLog.amount).toFixed(2);
+                }
+            }
+
+            logs.forEach(l => {
+                totalPrice += l.price;
+                totalVolume += l.amount;
+            });
+
+            // Set Stats Text
+            const avgConsumption = totalFuelForCalc > 0 ? (totalDist / totalFuelForCalc).toFixed(2) : '--';
+            document.getElementById('stat-avg-consumption').innerText = avgConsumption;
+            
+            document.getElementById('stat-last-consumption').innerText = 
+                lastConsumption ? `前回: ${lastConsumption} km/L` : '前回: -- km/L';
+
+            const avgPrice = totalVolume > 0 ? Math.round(totalPrice / totalVolume) : '--';
+            document.getElementById('stat-avg-price').innerText = avgPrice;
+
+            const latestOdo = logs.length > 0 ? logs[logs.length - 1].odo.toLocaleString() : '--';
+            document.getElementById('stat-total-odo').innerHTML = `<span>総Odo:</span><span class="font-semibold text-slate-300">${latestOdo} km</span>`;
+
+            // Update Vehicle Maintenance Card
+            const latestMaintCard = document.getElementById('latest-maint-card');
+            if (maints.length > 0) {
+                const latest = maints[0];
+                latestMaintCard.innerHTML = `
+                    <div class="flex justify-between items-center bg-slate-950/50 p-2 rounded-lg border border-slate-800/60">
+                        <div class="flex items-center gap-2">
+                            <span class="px-1.5 py-0.5 bg-amber-950/80 border border-amber-800/80 text-amber-300 rounded text-[10px] font-medium">
+                                ${escapeHtml(latest.category)}
+                            </span>
+                            <span class="text-xs text-slate-200 font-medium">${escapeHtml(latest.memo || '記録あり')}</span>
+                        </div>
+                        <div class="text-right text-[10px] text-slate-400">
+                            <div>${latest.date}</div>
+                            ${latest.cost ? `<div class="text-amber-400 font-mono">¥${Number(latest.cost).toLocaleString()}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            } else {
+                latestMaintCard.innerHTML = `<span class="text-slate-500 text-[11px]">車両履歴の記録はありません</span>`;
+            }
+        }
+
+        // Live calculation in input form
+        function calculateUnitCalculations() {
+            const amount = parseFloat(document.getElementById('input-amount').value) || 0;
+            const price = parseFloat(document.getElementById('input-price').value) || 0;
+            const currentOdo = parseFloat(document.getElementById('input-odo').value) || 0;
+
+            // Unit Price
+            const unitPrice = amount > 0 ? (price / amount).toFixed(1) : '0';
+            document.getElementById('calculated-unit-price').innerText = unitPrice;
+
+            // Difference Odo Hint
+            const vehicle = getActiveVehicle();
+            const hintElem = document.getElementById('odo-diff-hint');
+            if (vehicle.logs.length > 0) {
+                const maxOdo = Math.max(...vehicle.logs.map(l => l.odo));
+                if (currentOdo > maxOdo) {
+                    const diff = (currentOdo - maxOdo).toFixed(1);
+                    hintElem.innerText = `+${diff} km`;
+                } else {
+                    hintElem.innerText = `前回: ${maxOdo} km`;
+                }
+            } else {
+                hintElem.innerText = '';
+            }
+        }
+
+        // --- Fuel Log Submit ---
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            const vehicle = getActiveVehicle();
+
+            const date = document.getElementById('input-date').value;
+            const fuelType = document.getElementById('input-fuel-type').value;
+            const odo = parseFloat(document.getElementById('input-odo').value);
+            const amount = parseFloat(document.getElementById('input-amount').value);
+            const price = parseFloat(document.getElementById('input-price').value);
+
+            if (isNaN(odo) || isNaN(amount) || isNaN(price)) {
+                showToast("入力値を確認してください", "error");
+                return;
+            }
+
+            const newLog = {
+                id: Date.now().toString(),
+                date,
+                fuelType,
+                odo,
+                amount,
+                price
+            };
+
+            vehicle.logs.push(newLog);
+            saveData();
+
+            // Clear dynamic inputs
+            document.getElementById('input-amount').value = '';
+            document.getElementById('input-price').value = '';
+            document.getElementById('calculated-unit-price').innerText = '0';
+
+            updateDashboard();
+            calculateUnitCalculations();
+            showToast("給油記録を追加しました");
+        }
+
+        // --- Vehicle History Submit ---
+        function handleMaintFormSubmit(event) {
+            event.preventDefault();
+            const vehicle = getActiveVehicle();
+
+            const date = document.getElementById('maint-date').value;
+            const category = document.getElementById('maint-category').value;
+            const cost = document.getElementById('maint-cost').value;
+            const odo = document.getElementById('maint-odo').value;
+            const memo = document.getElementById('maint-memo').value;
+
+            const newMaint = {
+                id: Date.now().toString(),
+                date,
+                category,
+                cost: cost ? parseFloat(cost) : null,
+                odo: odo ? parseFloat(odo) : null,
+                memo
+            };
+
+            if (!vehicle.maints) vehicle.maints = [];
+            vehicle.maints.push(newMaint);
+            saveData();
+
+            closeAddMaintModal();
+            updateDashboard();
+            showToast("車両履歴を追加しました");
+
+            // Reset form
+            document.getElementById('maint-cost').value = '';
+            document.getElementById('maint-odo').value = '';
+            document.getElementById('maint-memo').value = '';
+        }
+
+        // --- Modals logic ---
+        function openHistoryModal() {
+            const vehicle = getActiveVehicle();
+            document.getElementById('history-vehicle-name').innerText = `${vehicle.name} の給油履歴`;
+            
+            const listElem = document.getElementById('history-list');
+            listElem.innerHTML = '';
+
+            const logs = [...vehicle.logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            if (logs.length === 0) {
+                listElem.innerHTML = `<div class="text-center py-8 text-slate-500 text-xs">給油データがありません</div>`;
+            } else {
+                logs.forEach((log) => {
+                    const unitPrice = (log.price / log.amount).toFixed(1);
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-950 border border-slate-800 rounded-xl p-3 flex justify-between items-center text-xs";
+                    card.innerHTML = `
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-bold text-slate-200">${log.date}</span>
+                                <span class="px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px]">${escapeHtml(log.fuelType)}</span>
+                            </div>
+                            <div class="text-slate-400 text-[11px] font-mono">
+                                ${log.odo.toLocaleString()} km | ${log.amount} L | ¥${log.price.toLocaleString()} (${unitPrice}円/L)
+                            </div>
+                        </div>
+                        <button onclick="deleteLog('${log.id}')" class="text-slate-600 hover:text-rose-400 p-2 transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    `;
+                    listElem.appendChild(card);
+                });
+            }
+
+            document.getElementById('history-modal').classList.remove('hidden');
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('history-modal').classList.add('hidden');
+        }
+
+        function deleteLog(logId) {
+            const vehicle = getActiveVehicle();
+            vehicle.logs = vehicle.logs.filter(l => l.id !== logId);
+            saveData();
+            openHistoryModal();
+            updateDashboard();
+            showToast("データを削除しました");
+        }
+
+        function openAddMaintModal() {
+            document.getElementById('add-maint-modal').classList.remove('hidden');
+        }
+
+        function closeAddMaintModal() {
+            document.getElementById('add-maint-modal').classList.add('hidden');
+        }
+
+        function openMaintHistoryModal() {
+            const vehicle = getActiveVehicle();
+            document.getElementById('maint-vehicle-name').innerText = `${vehicle.name} の車両履歴`;
+            
+            const listElem = document.getElementById('maint-history-list');
+            listElem.innerHTML = '';
+
+            const maints = [...(vehicle.maints || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            if (maints.length === 0) {
+                listElem.innerHTML = `<div class="text-center py-8 text-slate-500 text-xs">車両履歴データがありません</div>`;
+            } else {
+                maints.forEach((m) => {
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-950 border border-slate-800 rounded-xl p-3 flex justify-between items-center text-xs";
+                    card.innerHTML = `
+                        <div class="flex-1 pr-2">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-bold text-slate-200">${m.date}</span>
+                                <span class="px-1.5 py-0.5 bg-amber-950/80 border border-amber-800/80 text-amber-300 rounded text-[10px]">
+                                    ${escapeHtml(m.category)}
+                                </span>
+                            </div>
+                            <div class="text-slate-300 text-xs font-medium">${escapeHtml(m.memo || 'メモなし')}</div>
+                            <div class="text-slate-500 text-[10px] font-mono mt-0.5">
+                                ${m.odo ? `${m.odo.toLocaleString()} km` : ''} 
+                                ${m.cost ? ` | ¥${Number(m.cost).toLocaleString()}` : ''}
+                            </div>
+                        </div>
+                        <button onclick="deleteMaint('${m.id}')" class="text-slate-600 hover:text-rose-400 p-2 transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    `;
+                    listElem.appendChild(card);
+                });
+            }
+
+            document.getElementById('maint-history-modal').classList.remove('hidden');
+        }
+
+        function closeMaintHistoryModal() {
+            document.getElementById('maint-history-modal').classList.add('hidden');
+        }
+
+        function deleteMaint(maintId) {
+            const vehicle = getActiveVehicle();
+            vehicle.maints = vehicle.maints.filter(m => m.id !== maintId);
+            saveData();
+            openMaintHistoryModal();
+            updateDashboard();
+            showToast("車両履歴を削除しました");
+        }
+
+        function openSettingsModal() {
+            const vehicle = getActiveVehicle();
+            document.getElementById('delete-vehicle-name').innerText = escapeHtml(vehicle.name);
+            document.getElementById('rename-vehicle-input').value = vehicle.name;
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        // --- Vehicle Actions ---
+        function handleRenameVehicle(event) {
+            event.preventDefault();
+            const inputElem = document.getElementById('rename-vehicle-input');
+            const newName = inputElem.value.trim();
+
+            if (!newName) return;
+
+            const vehicle = getActiveVehicle();
+            vehicle.name = newName;
+            saveData();
+
+            renderTabs();
+            document.getElementById('delete-vehicle-name').innerText = escapeHtml(newName);
+            showToast("車両名を更新しました");
+        }
+
+        function handleAddVehicle(event) {
+            event.preventDefault();
+            const inputElem = document.getElementById('new-vehicle-name');
+            const name = inputElem.value.trim();
+
+            if (!name) return;
+
+            const newVehicle = {
+                id: 'v_' + Date.now(),
+                name,
+                logs: [],
+                maints: []
+            };
+
+            appState.vehicles.push(newVehicle);
+            appState.activeVehicleId = newVehicle.id;
+            saveData();
+
+            inputElem.value = '';
+            renderTabs();
+            updateDashboard();
+            closeSettingsModal();
+            showToast(`車両「${name}」を追加しました`);
+        }
+
+        function deleteCurrentVehicle() {
+            if (appState.vehicles.length <= 1) {
+                showToast("最後の1台は削除できません", "error");
+                return;
+            }
+
+            const current = getActiveVehicle();
+            if (!confirm(`「${current.name}」とその記録データを完全に削除しますか？`)) {
+                return;
+            }
+
+            appState.vehicles = appState.vehicles.filter(v => v.id !== current.id);
+            appState.activeVehicleId = appState.vehicles[0].id;
+            saveData();
+
+            renderTabs();
+            updateDashboard();
+            closeSettingsModal();
+            showToast("車両を削除しました");
+        }
+
+        // --- CSV Operations ---
+        function exportCSV() {
+            const vehicle = getActiveVehicle();
+            if (vehicle.logs.length === 0) {
+                showToast("出力するデータがありません", "error");
+                return;
+            }
+
+            const header = "日付,走行距離(km),給油量(L),支払金額(円),油種\n";
+            const rows = vehicle.logs.map(l => 
+                `"${l.date}",${l.odo},${l.amount},${l.price},"${l.fuelType}"`
+            ).join("\n");
+
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]); // UTF-8 BOM
+            const blob = new Blob([bom, header + rows], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `FuelLog_${vehicle.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+            URL.revokeObjectURL(url);
+            showToast("CSVをエクスポートしました");
+        }
+
+        function importCSV(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split(/\r\n|\n/);
+                const vehicle = getActiveVehicle();
+                let importedCount = 0;
+
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+
+                    // Parse CSV row
+                    const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+                    if (cols.length >= 4) {
+                        const date = cols[0];
+                        const odo = parseFloat(cols[1]);
+                        const amount = parseFloat(cols[2]);
+                        const price = parseFloat(cols[3]);
+                        const fuelType = cols[4] || 'レギュラー';
+
+                        if (date && !isNaN(odo) && !isNaN(amount) && !isNaN(price)) {
+                            vehicle.logs.push({
+                                id: Date.now().toString() + "_" + i,
+                                date,
+                                odo,
+                                amount,
+                                price,
+                                fuelType
+                            });
+                            importedCount++;
+                        }
+                    }
+                }
+
+                if (importedCount > 0) {
+                    saveData();
+                    updateDashboard();
+                    showToast(`${importedCount}件のデータをインポートしました`);
+                    closeSettingsModal();
+                } else {
+                    showToast("取り込み可能なデータがありませんでした", "error");
+                }
+                event.target.value = ''; // Reset input
+            };
+
+            reader.readAsText(file);
+        }
+
+        // --- Toast Notification ---
+        function showToast(message, type = "success") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMsg.innerText = message;
+
+            if (type === "error") {
+                toastIcon.className = "fa-solid fa-triangle-exclamation text-rose-400";
+            } else {
+                toastIcon.className = "fa-solid fa-circle-check text-emerald-400";
+            }
+
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            toast.classList.add('opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 2500);
+        }
+    </script>
+</body>
+</html>
